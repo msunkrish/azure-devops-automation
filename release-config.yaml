@@ -1,0 +1,582 @@
+pool:
+  name: Hosted macOS
+  demands: maven
+
+
+steps:
+  - task: DownloadSecureFile@1
+    displayName: 'Download secure settings.xml file'
+    inputs:
+      secureFile: '2a030edc-3db2-4cb0-8a4a-c3fe8e5d4c7d'
+steps:
+  - script: |
+      ls -lart
+      cd $(Release.PrimaryArtifactSourceAlias)
+      mkdir target
+      cp *.jar target/
+      ls -lart
+      mv *.pom pom.xml
+      ls -lart
+      cd ..
+      mkdir target
+      cd $(Release.PrimaryArtifactSourceAlias)/target
+      cp -R *.jar ../../target/
+
+    displayName: 'House Keeping and logging CLI''s'
+steps:
+  - task: CdiscountAlm.rest-call-build-task.custom-build-task.restCallBuildTask@0
+    displayName: 'Rest call GET Anypoint Access Token'
+    inputs:
+      webserviceEndpoint: 'AnyPoint API Access'
+      httpVerb: POST
+      saveResponseToFile: true
+      outputFilePath: '$(System.DefaultWorkingDirectory)/$(Release.PrimaryArtifactSourceAlias)/access.json'
+steps:
+  - task: OneLuckiDev.json2variable.vsts-release-web-test.oneLuckiDevJson2Variable@1
+    displayName: 'Retrieve Access Token from response'
+    inputs:
+      jsonFile: '$(System.DefaultWorkingDirectory)/$(Release.PrimaryArtifactSourceAlias)/access.json'
+      variablePrefix: anypoint
+
+variables:
+  originApiId: '15605642'
+
+steps:
+  - task: CdiscountAlm.rest-call-build-task.custom-build-task.restCallBuildTask@0
+    displayName: 'REST to Promote API Instance'
+    inputs:
+      webserviceEndpoint: 'AnyPoint QA API Manager Promote'
+      httpVerb: POST
+      body: |
+        {
+           "instanceLabel":"$(instanceLabel)",
+           "promote":{
+              "originApiId":$(originApiId),
+              "policies":{
+                 "allEntities":true
+              },
+              "tiers":{
+                 "allEntities":true
+              },
+              "alerts":{
+                 "allEntities":true
+              }
+           }
+        }
+      saveResponseToFile: true
+      outputFilePath: '$(System.DefaultWorkingDirectory)/$(Release.PrimaryArtifactSourceAlias)/manager.json'
+      headers: |
+        {
+        "Content-Type":"application/json",
+        "Authorization": "Bearer $(anypoint.access_token)"
+        }
+    continueOnError: true
+    condition: eq(variables['Promote API Manager'], 'yes')
+
+    steps:
+      - task: OneLuckiDev.json2variable.vsts-release-web-test.oneLuckiDevJson2Variable@1
+        displayName: 'Retrieve API Manager Promote from response'
+        inputs:
+          jsonFile: '$(System.DefaultWorkingDirectory)/$(Release.PrimaryArtifactSourceAlias)/manager.json'
+          variablePrefix: apimanager
+        continueOnError: true
+        condition: eq(variables['Promote API Manager'], 'yes')
+steps:
+  - task: CdiscountAlm.rest-call-build-task.custom-build-task.restCallBuildTask@0
+    displayName: 'Rest call GET the Promoted Instance Label ID'
+    inputs:
+      webserviceEndpoint: 'AnyPoint QA API Manager Promote'
+      relativeUrl: '?instanceLabel=$(instanceLabel)'
+      saveResponseToFile: true
+      outputFilePath: '$(System.DefaultWorkingDirectory)/$(Release.PrimaryArtifactSourceAlias)/apilist.json'
+      headers: |
+        {
+        "Content-Type":"application/json",
+        "Authorization": "Bearer $(anypoint.access_token)"
+        }
+    condition: succeededOrFailed()
+steps:
+  - task: OneLuckiDev.json2variable.vsts-release-web-test.oneLuckiDevJson2Variable@1
+    displayName: 'Retrieve the Promoted Instance Label ID from response'
+    inputs:
+      jsonFile: '$(System.DefaultWorkingDirectory)/$(Release.PrimaryArtifactSourceAlias)/apilist.json'
+      variablePrefix: apilist
+
+steps:
+  - task: YodLabs.VariableTasks.SetVariable.SetVariable@0
+    displayName: 'Extract the InstanceLabel Id promoted'
+    inputs:
+      variableName: apiinstance.id
+      value: '$(apilist.assets1.apis1.autodiscoveryInstanceName)'
+      transform: substring
+      indexStart: 3
+steps:
+  - script: |
+      cd $(Release.PrimaryArtifactSourceAlias)
+      ls -lart
+      cd ..
+      cd target
+      ls -lart
+    displayName: 'House Keeping and logging CLI''s'
+    condition: succeededOrFailed()
+variables:
+  apiVersionId: 'v1'
+  silver.timePeriodInMilliseconds: '60000'
+  silver.maximumRequests: '1000'
+
+steps:
+  - task: CdiscountAlm.rest-call-build-task.custom-build-task.restCallBuildTask@0
+    displayName: 'Rest call to Create Silver SLA Tiers'
+    inputs:
+      webserviceEndpoint: 'AnyPoint QA Client Application Promotion'
+      relativeUrl: '/$(apiinstance.id)/tiers'
+      httpVerb: POST
+      body: |
+        {
+            "apiVersionId": "$(apiVersionId)",
+            "status": "ACTIVE",
+            "autoApprove": false,
+            "limits": [
+                {
+                    "visible": true,
+                    "timePeriodInMilliseconds": $(silver.timePeriodInMilliseconds),
+                    "maximumRequests": $(silver.maximumRequests)
+                }
+            ],
+            "name": "Silver",
+            "description": "Silver Tier"
+        }
+      saveResponseToFile: true
+      outputFilePath: '$(System.DefaultWorkingDirectory)/$(Release.PrimaryArtifactSourceAlias)/silvertier.json'
+      headers: |
+        {
+        "Content-Type":"application/json",
+        "Authorization": "Bearer $(anypoint.access_token)"
+        }
+    continueOnError: true
+    condition: eq(variables['Promote Contracts'], 'yes')
+steps:
+  - task: OneLuckiDev.json2variable.vsts-release-web-test.oneLuckiDevJson2Variable@1
+    displayName: 'Retrieve SLA Silver Tier from response'
+    inputs:
+      jsonFile: '$(System.DefaultWorkingDirectory)/$(Release.PrimaryArtifactSourceAlias)/silvertier.json'
+      variablePrefix: silver
+    continueOnError: true
+    condition: eq(variables['Promote Contracts'], 'yes')
+variables:
+  apiVersionId: 'v1'
+  gold.timePeriodInMilliseconds: '60000'
+  gold.maximumRequests: '10000'
+
+steps:
+  - task: CdiscountAlm.rest-call-build-task.custom-build-task.restCallBuildTask@0
+    displayName: 'Rest call to Create Gold SLA Tiers'
+    inputs:
+      webserviceEndpoint: 'AnyPoint QA API Manager Promote'
+      relativeUrl: '/$(apiinstance.id)/tiers'
+      httpVerb: POST
+      body: |
+        {
+            "apiVersionId": "$(apiVersionId)",
+            "status": "ACTIVE",
+            "autoApprove": false,
+            "limits": [
+                {
+                    "visible": true,
+                    "timePeriodInMilliseconds": $(gold.timePeriodInMilliseconds),
+                    "maximumRequests": $(gold.maximumRequests)
+                }
+            ],
+            "name": "Gold",
+            "description": "Gold Tier"
+        }
+      saveResponseToFile: true
+      outputFilePath: '$(System.DefaultWorkingDirectory)/$(Release.PrimaryArtifactSourceAlias)/gold.json'
+      headers: |
+        {
+        "Content-Type":"application/json",
+        "Authorization": "Bearer $(anypoint.access_token)"
+        }
+    continueOnError: true
+    condition: eq(variables['Promote Contracts'], 'yes')
+steps:
+  - task: OneLuckiDev.json2variable.vsts-release-web-test.oneLuckiDevJson2Variable@1
+    displayName: 'Retrieve Gold SLA Tier from response'
+    inputs:
+      jsonFile: '$(System.DefaultWorkingDirectory)/$(Release.PrimaryArtifactSourceAlias)/gold.json'
+      variablePrefix: gold
+    continueOnError: true
+    condition: eq(variables['Promote Contracts'], 'yes')
+
+variables:
+  apiVersionId: 'v1'
+  platinum.timePeriodInMilliseconds: '60000'
+  platinum.maximumRequests: '100000'
+
+steps:
+  - task: CdiscountAlm.rest-call-build-task.custom-build-task.restCallBuildTask@0
+    displayName: 'Rest call to Create Platinum SLA Tiers'
+    inputs:
+      webserviceEndpoint: 'AnyPoint QA API Manager Promote'
+      relativeUrl: '/$(apiinstance.id)/tiers'
+      httpVerb: POST
+      body: |
+        {
+            "apiVersionId": "$(apiVersionId)",
+            "status": "ACTIVE",
+            "autoApprove": false,
+            "limits": [
+                {
+                    "visible": true,
+                    "timePeriodInMilliseconds": $(platinum.timePeriodInMilliseconds),
+                    "maximumRequests": $(platinum.maximumRequests)
+                }
+            ],
+            "name": "Platinum",
+            "description": "Platinum Tier"
+        }
+      saveResponseToFile: true
+      outputFilePath: '$(System.DefaultWorkingDirectory)/$(Release.PrimaryArtifactSourceAlias)/platinum.json'
+      headers: |
+        {
+        "Content-Type":"application/json",
+        "Authorization": "Bearer $(anypoint.access_token)"
+        }
+    continueOnError: true
+    condition: eq(variables['Promote Contracts'], 'yes')
+steps:
+  - task: OneLuckiDev.json2variable.vsts-release-web-test.oneLuckiDevJson2Variable@1
+    displayName: 'Retrieve Platinum SLA Tier from response'
+    inputs:
+      jsonFile: '$(System.DefaultWorkingDirectory)/$(Release.PrimaryArtifactSourceAlias)/platinum.json'
+      variablePrefix: platinum
+    continueOnError: true
+    condition: eq(variables['Promote Contracts'], 'yes')
+
+steps:
+  - task: CdiscountAlm.rest-call-build-task.custom-build-task.restCallBuildTask@0
+    displayName: 'REST to Promote Client Application'
+    inputs:
+      webserviceEndpoint: 'AnyPoint QA Client Application Promotion'
+      relativeUrl: '/$(apiinstance.id)/contracts'
+      httpVerb: POST
+      body: |
+        {
+            "applicationId": $(applicationId),
+            "acceptedTerms": true,
+            "requestedTierId": $(platinum.id)
+        }
+      saveResponseToFile: true
+      outputFilePath: '$(System.DefaultWorkingDirectory)/$(Release.PrimaryArtifactSourceAlias)/clientapp.json'
+      headers: |
+        {
+        "Content-Type":"application/json",
+        "Authorization": "Bearer $(anypoint.access_token)"
+        }
+    continueOnError: true
+    condition: eq(variables['Promote Contracts'], 'yes')
+steps:
+  - task: OneLuckiDev.json2variable.vsts-release-web-test.oneLuckiDevJson2Variable@1
+    displayName: 'Retrieve Client Application Promote from response'
+    inputs:
+      jsonFile: '$(System.DefaultWorkingDirectory)/$(Release.PrimaryArtifactSourceAlias)/clientapp.json'
+      variablePrefix: clientapp
+    continueOnError: true
+    condition: eq(variables['Promote Contracts'], 'yes')
+
+steps:
+  - task: CdiscountAlm.rest-call-build-task.custom-build-task.restCallBuildTask@0
+    displayName: 'Rest call GET Promoted Client Application'
+    inputs:
+      webserviceEndpoint: 'AnyPoint QA Client Application Promotion'
+      relativeUrl: '/$(apiinstance.id)/contracts'
+      saveResponseToFile: true
+      outputFilePath: '$(System.DefaultWorkingDirectory)/$(Release.PrimaryArtifactSourceAlias)/contracts.json'
+      headers: |
+        {
+        "Content-Type":"application/json",
+        "Authorization": "Bearer $(anypoint.access_token)"
+        }
+    condition: eq(variables['Promote Contracts'], 'yes')
+steps:
+  - task: YodLabs.VariableTasks.SetVariableFromJSON.SetValueFromJSON@0
+    displayName: 'Retrieve the contracts ID'
+    inputs:
+      variableName: contracts.id
+      jsonPathExpression: 'contracts[0].id'
+      jsonFile: '$(System.DefaultWorkingDirectory)/$(Release.PrimaryArtifactSourceAlias)/contracts.json'
+    condition: eq(variables['Promote Contracts'], 'yes')
+
+steps:
+  - task: CdiscountAlm.rest-call-build-task.custom-build-task.restCallBuildTask@0
+    displayName: 'Rest call PATCH to approve the Client Application'
+    inputs:
+      webserviceEndpoint: 'AnyPoint QA Client Application Promotion'
+      relativeUrl: '/$(apiinstance.id)/contracts/$(contracts.id)'
+      httpVerb: PATCH
+      body: |
+        {
+        "status":"APPROVED",
+        "tierId": $(platinum.id),
+        "requestedTierId": $(platinum.id)
+        }
+      saveResponseToFile: true
+      outputFilePath: '$(System.DefaultWorkingDirectory)/$(Release.PrimaryArtifactSourceAlias)/approve.json'
+      headers: |
+        {
+        "Content-Type":"application/json",
+        "Authorization": "Bearer $(anypoint.access_token)"
+        }
+    continueOnError: true
+    condition: eq(variables['Promote Contracts'], 'yes')
+steps:
+  - task: OneLuckiDev.json2variable.vsts-release-web-test.oneLuckiDevJson2Variable@1
+    displayName: 'Retrieve Approve from response'
+    inputs:
+      jsonFile: '$(System.DefaultWorkingDirectory)/$(Release.PrimaryArtifactSourceAlias)/approve.json'
+      variablePrefix: approve
+    condition: eq(variables['Promote Contracts'], 'yes')
+
+variables:
+  dlb.path: '/sslEndpoints/0/mappings/0'
+  dlb.inputUri: '/bloomberg/'
+  cloudhub.appname: 'srcl-bloomberg-sysapi-dr'
+  dlb.outputUri: '/'
+
+steps:
+  - task: CdiscountAlm.rest-call-build-task.custom-build-task.restCallBuildTask@0
+    displayName: 'REST Call PATCH configure DLB Mapping Rules'
+    inputs:
+      webserviceEndpoint: 'AnyPoint QA Load Balancer Promotion'
+      httpVerb: PATCH
+      body: |
+        [
+          {
+            "op": "add",
+            "path": "$(dlb.path)",
+            "value": {
+              "inputUri": "$(dlb.inputUri)",
+              "appName": "$(cloudhub.appname)",
+              "appUri": "$(dlb.outputUri)",
+              "upstreamProtocol": "http"
+            }
+          }
+        ]
+      saveResponseToFile: true
+      outputFilePath: '$(System.DefaultWorkingDirectory)/$(Release.PrimaryArtifactSourceAlias)/dlb.json'
+      headers: |
+        {
+        "Content-Type":"application/json",
+        "Authorization": "Bearer $(anypoint.access_token)"
+        }
+    continueOnError: true
+    condition: eq(variables['Promote Load Balancer'], 'yes')
+steps:
+  - task: OneLuckiDev.json2variable.vsts-release-web-test.oneLuckiDevJson2Variable@1
+    displayName: 'Retrieve DLB add from response'
+    inputs:
+      jsonFile: '$(System.DefaultWorkingDirectory)/$(Release.PrimaryArtifactSourceAlias)/dlb.json'
+      variablePrefix: dlb
+    condition: eq(variables['Promote Load Balancer'], 'yes')
+
+variables:
+  mq.regionId: ''
+
+steps:
+  - task: CdiscountAlm.rest-call-build-task.custom-build-task.restCallBuildTask@0
+    displayName: 'Rest call GET to Anypoint MQ Queues'
+    inputs:
+      webserviceEndpoint: 'Anypoint MQ QA Connection'
+      relativeUrl: '/regions/$(mq.regionId)/destinations/queues/$(mq.queueId)'
+      saveResponseToFile: true
+      outputFilePath: '$(System.DefaultWorkingDirectory)/$(Release.PrimaryArtifactSourceAlias)/mqqueue.json'
+      headers: |
+        {
+        "Content-Type":"application/json",
+        "Authorization": "Bearer $(anypoint.access_token)"
+        }
+    continueOnError: true
+    condition: and(eq(variables['Promote Anypoint MQ'], 'yes'), ne(variables['mq.fifo'], 'true'))
+steps:
+  - task: OneLuckiDev.json2variable.vsts-release-web-test.oneLuckiDevJson2Variable@1
+    displayName: 'Retrieve the MQ Queue list'
+    inputs:
+      jsonFile: '$(System.DefaultWorkingDirectory)/$(Release.PrimaryArtifactSourceAlias)/mqqueue.json'
+      variablePrefix: queue
+    continueOnError: true
+    condition: and(eq(variables['Promote Anypoint MQ'], 'yes'), ne(variables['mq.fifo'], 'true'))
+
+variables:
+  mq.regionId: ''
+
+steps:
+  - task: CdiscountAlm.rest-call-build-task.custom-build-task.restCallBuildTask@0
+    displayName: 'Rest call GET to Anypoint MQ Exchange'
+    inputs:
+      webserviceEndpoint: 'Anypoint MQ QA Connection'
+      relativeUrl: '/regions/$(mq.regionId)/destinations/exchanges/$(mq.exchangeId)'
+      saveResponseToFile: true
+      outputFilePath: '$(System.DefaultWorkingDirectory)/$(Release.PrimaryArtifactSourceAlias)/mqexchange.json'
+      headers: |
+        {
+        "Content-Type":"application/json",
+        "Authorization": "Bearer $(anypoint.access_token)"
+        }
+    continueOnError: true
+    condition: and(eq(variables['Promote Anypoint MQ'], 'yes') ,eq(variables['mq.exchange.queue.binding'], 'yes'))
+steps:
+  - task: OneLuckiDev.json2variable.vsts-release-web-test.oneLuckiDevJson2Variable@1
+    displayName: 'Retrieve the MQ Exchange list'
+    inputs:
+      jsonFile: '$(System.DefaultWorkingDirectory)/$(Release.PrimaryArtifactSourceAlias)/mqexchange.json'
+      variablePrefix: exchange
+    continueOnError: true
+    condition: and(eq(variables['Promote Anypoint MQ'], 'yes') ,eq(variables['mq.exchange.queue.binding'], 'yes'))
+
+variables:
+  mq.regionId: ''
+
+steps:
+  - task: CdiscountAlm.rest-call-build-task.custom-build-task.restCallBuildTask@0
+    displayName: 'Rest call GET to Anypoint MQ Queue to Exchange Binding'
+    inputs:
+      webserviceEndpoint: 'Anypoint MQ QA Connection'
+      relativeUrl: '/regions/$(mq.regionId)/bindings/queues/$(mq.queueId)'
+      saveResponseToFile: true
+      outputFilePath: '$(System.DefaultWorkingDirectory)/$(Release.PrimaryArtifactSourceAlias)/mqbindings.json'
+      headers: |
+        {
+        "Content-Type":"application/json",
+        "Authorization": "Bearer $(anypoint.access_token)"
+        }
+    continueOnError: true
+    condition: and(eq(variables['Promote Anypoint MQ'], 'yes') , eq(variables['mq.exchange.queue.binding'], 'yes'))
+steps:
+  - task: OneLuckiDev.json2variable.vsts-release-web-test.oneLuckiDevJson2Variable@1
+    displayName: 'Retrieve the MQ Queue to Exchange binding'
+    inputs:
+      jsonFile: '$(System.DefaultWorkingDirectory)/$(Release.PrimaryArtifactSourceAlias)/mqbindings.json'
+      variablePrefix: binding
+    continueOnError: true
+    condition: and(eq(variables['Promote Anypoint MQ'], 'yes') , eq(variables['mq.exchange.queue.binding'], 'yes'))
+
+variables:
+  mq.regionId: ''
+  mq.maxDeliveries: '10'
+
+steps:
+  - task: CdiscountAlm.rest-call-build-task.custom-build-task.restCallBuildTask@0
+    displayName: 'Rest call PUT to Anypoint MQ Queue'
+    inputs:
+      webserviceEndpoint: 'Anypoint MQ QA Connection'
+      relativeUrl: '/regions/$(mq.regionId)/destinations/queues/$(mq.queueId)'
+      httpVerb: PUT
+      body: |
+        {
+          "defaultTtl" : $(mq.defaultTtl),
+          "defaultLockTtl" : $(mq.defaultLockTtl),
+          "encrypted" : $(mq.encrypted),
+          "fifo": $(mq.fifo),
+          "deadLetterQueueId": "$(mq.deadLetterQueueId)",
+          "maxDeliveries": $(mq.maxDeliveries)
+        }
+      saveResponseToFile: true
+      outputFilePath: '$(System.DefaultWorkingDirectory)/$(Release.PrimaryArtifactSourceAlias)/mqqueuecreate.json'
+      headers: |
+        {
+        "Content-Type":"application/json",
+        "Authorization": "Bearer $(anypoint.access_token)"
+        }
+    condition: and(eq(variables['Promote Anypoint MQ'], 'yes') , ne(variables['mq.queueId'], '$(queue.queueId)'), eq(variables['mq.exchange.queue.binding'], 'yes'))
+
+variables:
+  mq.regionId: ''
+  mq.maxDeliveries: '10'
+
+steps:
+  - task: CdiscountAlm.rest-call-build-task.custom-build-task.restCallBuildTask@0
+    displayName: 'Rest call PUT to Anypoint MQ FIFO Queue'
+    inputs:
+      webserviceEndpoint: 'Anypoint MQ QA Connection'
+      relativeUrl: '/regions/$(mq.regionId)/destinations/queues/$(mq.queueId)'
+      httpVerb: PUT
+      body: |
+        {
+          "defaultTtl" : $(mq.defaultTtl),
+          "defaultLockTtl" : $(mq.defaultLockTtl),
+          "encrypted" : $(mq.encrypted),
+          "fifo": $(mq.fifo),
+          "deadLetterQueueId": "$(mq.deadLetterQueueId)",
+          "maxDeliveries": $(mq.maxDeliveries)
+        }
+      saveResponseToFile: true
+      outputFilePath: '$(System.DefaultWorkingDirectory)/$(Release.PrimaryArtifactSourceAlias)/mqqueuecreate.json'
+      headers: |
+        {
+        "Content-Type":"application/json",
+        "Authorization": "Bearer $(anypoint.access_token)"
+        }
+    condition: and(eq(variables['Promote Anypoint MQ'], 'yes') , ne(variables['mq.queueId'], '$(queue.queueId)'), ne(variables['mq.exchange.queue.binding'], 'yes'), eq(variables['mq.fifo'], 'true'))
+
+variables:
+  mq.regionId: ''
+
+steps:
+  - task: CdiscountAlm.rest-call-build-task.custom-build-task.restCallBuildTask@0
+    displayName: 'Rest call PUT to Anypoint MQ Exchange'
+    inputs:
+      webserviceEndpoint: 'Anypoint MQ QA Connection'
+      relativeUrl: '/regions/$(mq.regionId)/destinations/exchanges/$(mq.exchangeId)'
+      httpVerb: PUT
+      body: |
+        {
+            "encrypted": $(mq.encrypted)
+        }
+      saveResponseToFile: true
+      outputFilePath: '$(System.DefaultWorkingDirectory)/$(Release.PrimaryArtifactSourceAlias)/mqexchangecreate.json'
+      headers: |
+        {
+        "Content-Type":"application/json",
+        "Authorization": "Bearer $(anypoint.access_token)"
+        }
+    condition: and(eq(variables['Promote Anypoint MQ'], 'yes') , ne(variables['mq.exchangeId'], '$(exchange.exchangeId)'), ne(variables['mq.fifo'], 'true'))
+
+variables:
+  mq.regionId: ''
+
+steps:
+  - task: CdiscountAlm.rest-call-build-task.custom-build-task.restCallBuildTask@0
+    displayName: 'Rest call PUT to Anypoint MQ Queue Binding to Exchange'
+    inputs:
+      webserviceEndpoint: 'Anypoint MQ QA Connection'
+      relativeUrl: '/regions/$(mq.regionId)/bindings/exchanges/$(mq.exchangeId)/queues/$(mq.queueId)'
+      httpVerb: PUT
+      saveResponseToFile: true
+      outputFilePath: '$(System.DefaultWorkingDirectory)/$(Release.PrimaryArtifactSourceAlias)/mqbindingcreate.json'
+      headers: |
+        {
+        "Content-Type":"application/json",
+        "Authorization": "Bearer $(anypoint.access_token)"
+        }
+    condition: and(eq(variables['Promote Anypoint MQ'], 'yes') , ne(variables['mq.exchangeId'], '$(binding.exchangeId)'), eq(variables['mq.exchange.queue.binding'], 'yes'), ne(variables['mq.fifo'], 'true'))
+
+variables:
+  cloudhub.appname: 'srcl-bloomberg-sysapi-dr'
+  cloudhub.environment: 'ProductionDR'
+  cloudhub.businessgroup: ''
+  cloudhub.worker: ''
+  cloudhub.region: ''
+  cloudhub.workertype: ''
+  cloudhub.clientId: 'a1a9040ae32045c091aee04d18bf8649'
+  env: 'prod-dr'
+  secure.key: 'changeMe'
+
+steps:
+  - task: Maven@3
+    displayName: 'Maven clean deploy to target Environment'
+    inputs:
+      mavenPomFile: '$(Release.PrimaryArtifactSourceAlias)/pom.xml'
+      goals: 'mule:deploy'
+      options: '-B -e -s $(Agent.TempDirectory)/settings.xml -Dcloudhub.appname=$(cloudhub.appname) -Dcloudhub.environment=$(cloudhub.environment) -Dcloudhub.businessgroup=$(cloudhub.businessgroup) -Dcloudhub.worker=$(cloudhub.worker) -Dcloudhub.region=$(cloudhub.region) -Dcloudhub.workertype=$(cloudhub.workertype) -Dcloudhub.env.autodiscovery=$(apiinstance.id) -Dcloudhub.env.clientid=$(cloudhub.clientId) -Dcloudhub.env.clientsecret=$(cloudhub.secret) -Denv=$(env) -DanypointPassword=$(anypoint.password) -Dkey=$(secure.key) -DartifactFileName=target/*.jar'
+      publishJUnitResults: false
+    condition: succeededOrFailed()
