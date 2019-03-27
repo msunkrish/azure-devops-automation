@@ -7,7 +7,7 @@ steps:
   - task: DownloadSecureFile@1
     displayName: 'Download secure settings.xml file'
     inputs:
-      secureFile: '2a030edc-3db2-4cb0-8a4a-c3fe8e5d4c7d'
+      secureFile: ''
 steps:
   - script: |
       ls -lart
@@ -39,7 +39,7 @@ steps:
       variablePrefix: anypoint
 
 variables:
-  originApiId: '15605642'
+  originApiId: ''
 
 steps:
   - task: CdiscountAlm.rest-call-build-task.custom-build-task.restCallBuildTask@0
@@ -562,13 +562,13 @@ steps:
 
 variables:
   cloudhub.appname: 'srcl-bloomberg-sysapi-dr'
-  cloudhub.environment: 'ProductionDR'
+  cloudhub.environment: ''
   cloudhub.businessgroup: ''
   cloudhub.worker: ''
   cloudhub.region: ''
   cloudhub.workertype: ''
   cloudhub.clientId: ''
-  env: 'prod-dr'
+  env: ''
   secure.key: 'changeMe'
 
 steps:
