@@ -1,0 +1,66 @@
+pool:
+  name: Hosted macOS
+  demands: maven
+  
+steps:
+- task: DownloadSecureFile@1
+  displayName: 'Download secure settings.xml file'
+  inputs:
+    secureFile: '2a030edc-3db2-4cb0-8a4a-c3fe8e5d4c7d'
+
+variables:
+  cloudhub.appname: 'srcl-bloomberg-sysapi-dev'
+  env: 'dev'
+
+steps:
+- task: Maven@3
+  displayName: 'Maven clean test (Munit testing)'
+  inputs:
+    mavenPomFile: '$(System.DefaultWorkingDirectory)/pom.xml'
+    goals: 'clean test'
+    options: '-B -e -s $(Agent.TempDirectory)/settings.xml -DnexusPassword=$(nexus.password) -DjfrogPassword=$(jfrog.password) -Dcloudhub.appname=$(cloudhub.appname) -Denv=$(env) -Dkey=$(secure.key)'
+    testResultsFiles: '**/surefire-reports/*.xml'
+    testRunTitle: '$(Build.DefinitionName) munit testing'
+    mavenOptions: '-Xmx4096m'
+
+variables:
+  cloudhub.appname: 'srcl-bloomberg-sysapi-dev'
+
+steps:
+- task: JFrog.jfrog-artifactory-vsts-extension.artifactory-maven.ArtifactoryMaven@1
+  displayName: 'Maven clean build (deploys to jfrog artifactory)'
+  inputs:
+    mavenPomFile: '$(System.DefaultWorkingDirectory)/pom.xml'
+    goals: 'clean deploy -DattachMuleSources'
+    options: '-B -e -s $(Agent.TempDirectory)/settings.xml -DjfrogPassword=$(jfrog.password) -DskipMunitTests -Dcloudhub.appname=$(cloudhub.appname)'
+    artifactoryDeployService: '$(Parameters.--enc-password=false)'
+    targetDeployReleaseRepo: 'libs-release-local'
+    targetDeploySnapshotRepo: 'libs-snapshot-local'
+    collectBuildInfo: true
+    includeEnvVars: true
+
+
+variables:
+  cloudhub.appname: 'srcl-bloomberg-sysapi-dev'
+  cloudhub.environment: 'Dev'
+  cloudhub.businessgroup: 'Stericycle'
+  cloudhub.worker: '1'
+  cloudhub.region: 'us-east-2'
+  cloudhub.workertype: 'SMALL'
+  cloudhub.env.autodiscovery: '15605642'
+  env: 'dev'
+
+steps:
+- task: Maven@3
+  displayName: 'Maven clean deploy (Only for dev environment)'
+  inputs:
+    mavenPomFile: '$(System.DefaultWorkingDirectory)/pom.xml'
+    goals: 'mule:deploy'
+    options: '-B -e -s $(Agent.TempDirectory)/settings.xml -Dcloudhub.appname=$(cloudhub.appname) -Dcloudhub.environment=$(cloudhub.environment) -Dcloudhub.businessgroup=$(cloudhub.businessgroup) -Dcloudhub.worker=$(cloudhub.worker) -Dcloudhub.region=$(cloudhub.region) -Dcloudhub.workertype=$(cloudhub.workertype) -Dapi.id=$(cloudhub.env.autodiscovery) -Dcloudhub.env.clientid=$(cloudhub.clientId) -Dcloudhub.env.clientsecret=$(cloudhub.secret) -Denv=$(env) -DanypointPassword=$(anypoint.password) -Dkey=$(secure.key) -DartifactFileName=target/*.jar -Dcloudhub.env.autodiscovery=$(cloudhub.env.autodiscovery)'
+    publishJUnitResults: false
+
+steps:
+- task: JFrog.jfrog-artifactory-vsts-extension.artifactory-publish-build-info.ArtifactoryPublishBuildInfo@1
+  displayName: 'Artifactory Publish Build Info'
+  inputs:
+    artifactoryService: 'Stericycle Artifactory'
