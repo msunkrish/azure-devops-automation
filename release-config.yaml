@@ -567,7 +567,7 @@ variables:
   cloudhub.worker: ''
   cloudhub.region: ''
   cloudhub.workertype: ''
-  cloudhub.clientId: 'a1a9040ae32045c091aee04d18bf8649'
+  cloudhub.clientId: ''
   env: 'prod-dr'
   secure.key: 'changeMe'
 
