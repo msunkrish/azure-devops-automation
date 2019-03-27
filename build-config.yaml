@@ -6,7 +6,7 @@ steps:
 - task: DownloadSecureFile@1
   displayName: 'Download secure settings.xml file'
   inputs:
-    secureFile: '2a030edc-3db2-4cb0-8a4a-c3fe8e5d4c7d'
+    secureFile: ''
 
 variables:
   cloudhub.appname: 'srcl-bloomberg-sysapi-dev'
@@ -43,11 +43,11 @@ steps:
 variables:
   cloudhub.appname: 'srcl-bloomberg-sysapi-dev'
   cloudhub.environment: 'Dev'
-  cloudhub.businessgroup: 'Stericycle'
+  cloudhub.businessgroup: ''
   cloudhub.worker: '1'
   cloudhub.region: 'us-east-2'
   cloudhub.workertype: 'SMALL'
-  cloudhub.env.autodiscovery: '15605642'
+  cloudhub.env.autodiscovery: ''
   env: 'dev'
 
 steps:
